@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Organizador Financeiro</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ctext x='8' y='44' font-size='40'%3E%F0%9F%92%B3%3C/text%3E%3C/svg%3E">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+  <!-- SheetJS (XLSX import/export) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="title-wrap">
+      <h1>Organizador Financeiro 💳</h1>
+      <p class="subtitle">Fechamento de faturas por pessoa (Pai, Mãe, Irmão, Eu) — tudo num lugar só.</p>
+
+      <nav class="nav">
+        <button class="tab" data-view="home" id="tabHome">🏠 Capa</button>
+        <button class="tab" data-view="base" id="tabBase">🗂️ Base de dados</button>
+        <button class="tab" data-view="people" id="tabPeople">👨‍👩‍👧‍👦 Pessoas</button>
+      </nav>
+    </div>
+
+    <div class="header-actions">
+      <button id="btnTheme" class="btn btn-ghost" title="Alternar tema">🌙</button>
+      <button id="btnExport" class="btn btn-secondary">Exportar</button>
+      <button id="btnImport" class="btn btn-secondary">Importar</button>
+      <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" hidden />
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- VIEW: HOME / CAPA -->
+    <section id="view-home" class="view">
+      <section class="filters card">
+        <div class="filters-row">
+          <div class="field">
+            <label for="monthSelect">Mês da fatura</label>
+            <select id="monthSelect"></select>
+          </div>
+
+          <div class="field">
+            <label for="personFilter">Pessoa</label>
+            <select id="personFilter">
+              <option value="ALL">Todos</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="cardFilter">Cartão</label>
+            <select id="cardFilter">
+              <option value="ALL">Todos</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="searchInput">Buscar</label>
+            <input id="searchInput" type="text" placeholder="Ex.: Amazon, Mercado, Uber..." />
+          </div>
+
+          <div class="field">
+            <label>&nbsp;</label>
+            <button id="btnAdd" class="btn btn-primary">+ Novo lançamento</button>
+          </div>
+        </div>
+
+        <div class="filters-hint">
+          <span class="pill" id="pillCount">0 lançamentos</span>
+          <span class="pill" id="pillSum">R$ 0,00</span>
+          <span class="pill" id="pillOpen">Abertos: R$ 0,00</span>
+          <span class="pill" id="pillPaid">Pagos: R$ 0,00</span>
+        </div>
+      </section>
+
+      <section class="grid">
+        <section class="card">
+          <div class="card-title">
+            <h2>Resumo do mês</h2>
+            <div class="muted" id="closingInfo">—</div>
+          </div>
+          <div class="kpis">
+            <div class="kpi">
+              <div class="kpi-label">Total</div>
+              <div class="kpi-value" id="kpiTotal">R$ 0,00</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Abertos</div>
+              <div class="kpi-value" id="kpiOpen">R$ 0,00</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Pagos</div>
+              <div class="kpi-value" id="kpiPaid">R$ 0,00</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-label">Maior gasto</div>
+              <div class="kpi-value" id="kpiTop">—</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-title">
+            <h2>Por pessoa</h2>
+            <div class="muted">Total do mês selecionado</div>
+          </div>
+          <canvas id="chartPeople" height="170"></canvas>
+        </section>
+
+        <section class="card">
+          <div class="card-title">
+            <h2>Por cartão</h2>
+            <div class="muted">Total do mês selecionado</div>
+          </div>
+          <canvas id="chartCards" height="170"></canvas>
+        </section>
+
+        <section class="card table-card">
+          <div class="card-title">
+            <h2>Lançamentos</h2>
+            <div class="muted">Clique para editar • Shift+Clique para marcar pago/aberto</div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="table" id="txTable">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Compra</th>
+                  <th>Pessoa</th>
+                  <th>Dividido</th>
+                  <th>Cartão</th>
+                  <th>Parcela</th>
+                  <th class="right">Valor</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </section>
+
+    <!-- VIEW: BASE DE DADOS -->
+    <section id="view-base" class="view" style="display:none;">
+      <section class="card">
+        <div class="card-title">
+          <h2>Base de dados</h2>
+          <div class="muted">Importe uma planilha para adicionar linhas ou preencha manualmente.</div>
+        </div>
+
+        <div class="base-actions">
+          <button id="btnAddBase" class="btn btn-primary">+ Adicionar manualmente</button>
+          <button id="btnImportBase" class="btn btn-secondary">Importar (adiciona linhas)</button>
+          <button id="btnExportBase" class="btn btn-secondary">Exportar (backup)</button>
+          <div class="spacer"></div>
+          <label class="check">
+            <input type="checkbox" id="chkAllMonths"/>
+            <span>Mostrar todos os meses</span>
+          </label>
+        </div>
+
+        <div class="table-wrap" style="margin-top:12px;">
+          <table class="table" id="baseTable">
+            <thead>
+              <tr>
+                <th>Mês</th>
+                <th>Data</th>
+                <th>Compra</th>
+                <th>Pessoa</th>
+                <th>Dividido</th>
+                <th>Cartão</th>
+                <th>Parcela</th>
+                <th class="right">Valor</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        
+          <div class="card-title" style="margin-top:14px;">
+            <h2>Extras (manual)</h2>
+            <div class="muted">Empréstimo, ajustes, outras anotações — você preenche manualmente</div>
+          </div>
+
+          <div class="base-actions" style="margin-bottom:10px;">
+            <button id="btnAddExtra" class="btn btn-primary">+ Adicionar extra</button>
+            <div class="spacer"></div>
+            <span class="pill" id="pillExtrasTotal">Extras: R$ 0,00</span>
+          </div>
+
+          <div class="table-wrap">
+            <table class="table" id="extrasTable" style="min-width: 720px;">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Tipo</th>
+                  <th>Descrição</th>
+                  <th class="right">Valor</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+<div class="muted" style="margin-top:10px;">
+          Dica: se você quiser “resetar” tudo, limpe o cache/localStorage do navegador (ou me peça que eu adiciono um botão “Zerar base”).
+        </div>
+      </section>
+    </section>
+
+    <!-- VIEW: PESSOAS -->
+    <section id="view-people" class="view" style="display:none;">
+      <section class="card">
+        <div class="card-title">
+          <h2>Pessoas</h2>
+          <div class="muted">Resumo por pessoa + total ao lado (igual sua planilha).</div>
+        </div>
+
+        <div class="people-head">
+          <div class="field">
+            <label for="peopleMonthSelect">Mês da fatura</label>
+            <select id="peopleMonthSelect"></select>
+          </div>
+          <div class="muted" id="peopleHint">—</div>
+        </div>
+
+        
+        <div class="people-grid" id="peopleGrid"></div>
+
+        <div class="card" id="peopleDetailsCard" style="margin-top:12px; display:none;">
+          <div class="card-title">
+            <h2 id="peopleDetailsTitle">Detalhes</h2>
+            <div class="muted" id="peopleDetailsMeta">—</div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="table" id="peopleTable">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Compra</th>
+                  <th>Cartão</th>
+                  <th>Parcela</th>
+                  <th class="right">Valor</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="muted" style="margin-top:10px;">
+            Clique em um lançamento para editar • Shift+Clique para marcar pago/aberto
+          </div>
+        </div>
+
+      </section>
+    </section>
+  </main>
+
+  <!-- Modal -->
+  <div class="modal-backdrop" id="modalBackdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-header">
+        <h3 id="modalTitle">Novo lançamento</h3>
+        <button class="btn btn-ghost" id="btnCloseModal" title="Fechar">✕</button>
+      </div>
+
+      <form id="txForm" class="modal-body">
+        <input type="hidden" id="txId" />
+
+        <div class="form-grid">
+          <div class="field">
+            <label for="txMonth">Mês da fatura</label>
+            <input id="txMonth" type="month" required />
+          </div>
+
+          <div class="field">
+            <label for="txCard">Cartão</label>
+            <input id="txCard" type="text" placeholder="Ex.: 8458 / Nubank / Itaú..." required />
+          </div>
+
+          <div class="field">
+            <label for="txPerson">Pessoa</label>
+            <select id="txPerson" required></select>
+          </div>
+
+          <div class="field">
+            <label for="txDividedWith">Dividido com (opcional)</label>
+            <select id="txDividedWith">
+              <option value="">—</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="txDate">Data da compra</label>
+            <input id="txDate" type="date" required />
+          </div>
+
+          <div class="field wide">
+            <label for="txDesc">Descrição</label>
+            <input id="txDesc" type="text" placeholder="Ex.: Amazon, Uber, Mercado..." required />
+          </div>
+
+          <div class="field">
+            <label for="txInstallment">Parcela</label>
+            <input id="txInstallment" type="text" placeholder="Ex.: 03/12 (opcional)" />
+          </div>
+
+          <div class="field">
+            <label for="txDue">Vencimento/Referência</label>
+            <input id="txDue" type="date" />
+          </div>
+
+          <div class="field">
+            <label for="txAmount">Valor</label>
+            <input id="txAmount" type="number" step="0.01" min="0" required />
+          </div>
+
+          <div class="field">
+            <label for="txStatus">Status</label>
+            <select id="txStatus">
+              <option value="OPEN">Aberto</option>
+              <option value="PAID">Pago</option>
+            </select>
+          </div>
+
+          <div class="field wide">
+            <label for="txNotes">Observações</label>
+            <input id="txNotes" type="text" placeholder="Ex.: dividir com alguém, reembolso, etc. (opcional)" />
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="btnDelete" style="display:none;">Excluir</button>
+          <div class="spacer"></div>
+          <button type="button" class="btn btn-secondary" id="btnCancel">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  
+  <!-- Modal: Card Meta (status do cartão) -->
+  <div class="modal-backdrop" id="metaBackdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="metaTitle">
+      <div class="modal-header">
+        <h3 id="metaTitle">Status do cartão</h3>
+        <button class="btn btn-ghost" id="btnCloseMeta" title="Fechar">✕</button>
+      </div>
+
+      <form id="metaForm" class="modal-body">
+        <input type="hidden" id="metaId"/>
+        <div class="form-grid">
+          <div class="field">
+            <label for="metaMonth">Mês</label>
+            <input id="metaMonth" type="month" required />
+          </div>
+
+          <div class="field">
+            <label for="metaCard">Cartão</label>
+            <input id="metaCard" type="text" required />
+          </div>
+
+          <div class="field">
+            <label for="metaPaid">Pago?</label>
+            <select id="metaPaid">
+              <option value="NO">Não</option>
+              <option value="YES">Sim</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="metaPaidDate">Data do pagamento (opcional)</label>
+            <input id="metaPaidDate" type="date" />
+          </div>
+
+          <div class="field">
+            <label for="metaOverdraft">Crédito cheque especial (R$)</label>
+            <input id="metaOverdraft" type="number" step="0.01" min="0" value="0" />
+          </div>
+
+          <div class="field wide">
+            <label for="metaNotes">Observação</label>
+            <input id="metaNotes" type="text" placeholder="Ex.: pagou com saldo X, entrou crédito, etc." />
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="btnDeleteMeta" style="display:none;">Excluir</button>
+          <div class="spacer"></div>
+          <button type="button" class="btn btn-secondary" id="btnCancelMeta">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Extra manual -->
+  <div class="modal-backdrop" id="extraBackdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="extraTitle">
+      <div class="modal-header">
+        <h3 id="extraTitle">Novo extra</h3>
+        <button class="btn btn-ghost" id="btnCloseExtra" title="Fechar">✕</button>
+      </div>
+
+      <form id="extraForm" class="modal-body">
+        <input type="hidden" id="extraId"/>
+        <div class="form-grid">
+          <div class="field">
+            <label for="extraMonth">Mês</label>
+            <input id="extraMonth" type="month" required />
+          </div>
+
+          <div class="field">
+            <label for="extraPerson">Pessoa</label>
+            <select id="extraPerson" required></select>
+          </div>
+
+          <div class="field">
+            <label for="extraDate">Data</label>
+            <input id="extraDate" type="date" required />
+          </div>
+
+          <div class="field">
+            <label for="extraType">Tipo</label>
+            <select id="extraType">
+              <option value="Emprestimo">Empréstimo</option>
+              <option value="Ajuste">Ajuste</option>
+              <option value="Outros">Outros</option>
+            </select>
+          </div>
+
+          <div class="field wide">
+            <label for="extraDesc">Descrição</label>
+            <input id="extraDesc" type="text" placeholder="Ex.: emprestou para X / reembolso / taxa..." required />
+          </div>
+
+          <div class="field">
+            <label for="extraAmount">Valor</label>
+            <input id="extraAmount" type="number" step="0.01" required />
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="btnDeleteExtra" style="display:none;">Excluir</button>
+          <div class="spacer"></div>
+          <button type="button" class="btn btn-secondary" id="btnCancelExtra">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+  <footer class="footer">
+    <div class="muted">
+      Seus dados ficam no <b>LocalStorage</b> do navegador (no seu PC). Use <b>Exportar</b> para backup.
+    </div>
+  </footer>
+</body>
+</html>
